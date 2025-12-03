@@ -541,15 +541,18 @@ const startServer = async () => {
       process.exit(1);
     }
 
-    // Test email configuration
-    const emailConfigured = await verifyEmailConfig();
-    if (!emailConfigured) {
-      console.warn('⚠️ Email service not configured. OTP functionality will not work.');
-    }
+    // Test email configuration (non-blocking - don't wait for timeout)
+    // Email verification will happen in background
+    verifyEmailConfig().catch(() => {
+      // Error already logged in verifyEmailConfig
+    });
+    
+    // Don't block server startup for email verification
+    // Email will be verified when actually sending emails
 
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📧 Email service: ${emailConfigured ? '✅ Configured' : '❌ Not configured'}`);
+      console.log(`📧 Email service: ⏳ Verifying... (will be tested when sending emails)`);
       console.log(`🗄️ Database: ✅ Connected`);
       console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
     });

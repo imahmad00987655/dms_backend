@@ -34,10 +34,10 @@ export const verifyEmailConfig = async () => {
   }
 
   try {
-    // Use Promise.race to add timeout
+    // Use Promise.race to add timeout (reduced to 8 seconds for faster startup)
     const verifyPromise = transporter.verify();
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Email verification timeout after 15 seconds')), 15000)
+      setTimeout(() => reject(new Error('Email verification timeout after 8 seconds')), 8000)
     );
     
     await Promise.race([verifyPromise, timeoutPromise]);
@@ -74,6 +74,11 @@ export const verifyEmailConfig = async () => {
 
 // Send OTP email
 export const sendOTPEmail = async (email, otp, type = 'verification') => {
+  // Verify email config before sending (if not already verified)
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    throw new Error('Email service not configured: Missing EMAIL_USER or EMAIL_PASS');
+  }
+
   try {
     const subject = type === 'password_reset' 
       ? 'Password Reset Verification Code' 
