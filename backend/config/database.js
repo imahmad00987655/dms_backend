@@ -4,9 +4,9 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
+  host: process.env.DB_HOST || '156.67.221.100',
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
+  password: process.env.DB_PASSWORD || 'gulfamNasreen@!',
   database: process.env.DB_NAME || 'fluent_financial_flow',
   port: parseInt(process.env.DB_PORT) || 3306,
   waitForConnections: true,
