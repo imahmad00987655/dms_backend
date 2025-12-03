@@ -8,11 +8,25 @@ export const dbConfig = {
   user: process.env.DB_USER || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_NAME || 'fluent_financial_flow',
-  port: process.env.DB_PORT || 3306,
+  port: parseInt(process.env.DB_PORT) || 3306,
   waitForConnections: true,
   connectionLimit: 10,
-  queueLimit: 0
+  queueLimit: 0,
+  // Force IPv4 to avoid IPv6 issues
+  enableKeepAlive: true,
+  keepAliveInitialDelay: 0
 };
+
+// Log database configuration (without password) for debugging
+if (process.env.NODE_ENV === 'development' || !process.env.DB_HOST) {
+  console.log('📊 Database Config:', {
+    host: dbConfig.host,
+    user: dbConfig.user,
+    database: dbConfig.database,
+    port: dbConfig.port,
+    hasPassword: !!dbConfig.password
+  });
+}
 
 // Create connection pool
 const pool = mysql.createPool(dbConfig);
@@ -22,10 +36,33 @@ export const testConnection = async () => {
   try {
     const connection = await pool.getConnection();
     console.log('✅ Database connected successfully');
+    console.log(`📊 Connected to: ${dbConfig.host}:${dbConfig.port}/${dbConfig.database}`);
     connection.release();
     return true;
   } catch (error) {
     console.error('❌ Database connection failed:', error.message);
+    console.error('📊 Attempted connection to:', {
+      host: dbConfig.host,
+      port: dbConfig.port,
+      database: dbConfig.database,
+      user: dbConfig.user,
+      hasPassword: !!dbConfig.password
+    });
+    
+    // Check if environment variables are missing
+    if (!process.env.DB_HOST) {
+      console.error('⚠️  DB_HOST environment variable is not set!');
+    }
+    if (!process.env.DB_USER) {
+      console.error('⚠️  DB_USER environment variable is not set!');
+    }
+    if (!process.env.DB_PASSWORD) {
+      console.error('⚠️  DB_PASSWORD environment variable is not set!');
+    }
+    if (!process.env.DB_NAME) {
+      console.error('⚠️  DB_NAME environment variable is not set!');
+    }
+    
     return false;
   }
 };
