@@ -5,14 +5,19 @@ dotenv.config();
 
 // Create transporter with timeout settings
 const transporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false, // true for 465, false for other ports
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 10000, // 10 seconds
-  socketTimeout: 10000, // 10 seconds
-  greetingTimeout: 10000, // 10 seconds
+  connectionTimeout: 20000, // 20 seconds
+  socketTimeout: 20000, // 20 seconds
+  greetingTimeout: 20000, // 20 seconds
+  tls: {
+    rejectUnauthorized: false
+  }
 });
 
 // Verify transporter configuration
@@ -29,8 +34,18 @@ export const verifyEmailConfig = async () => {
   }
 
   try {
-    await transporter.verify();
+    // Use Promise.race to add timeout
+    const verifyPromise = transporter.verify();
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Email verification timeout after 15 seconds')), 15000)
+    );
+    
+    await Promise.race([verifyPromise, timeoutPromise]);
     console.log('✅ Email service configured successfully');
+    console.log('📧 Email service ready:', {
+      user: process.env.EMAIL_USER,
+      from: process.env.EMAIL_FROM
+    });
     return true;
   } catch (error) {
     console.error('❌ Email service configuration failed:', error.message);
@@ -38,8 +53,21 @@ export const verifyEmailConfig = async () => {
       hasUser: !!process.env.EMAIL_USER,
       hasPass: !!process.env.EMAIL_PASS,
       hasFrom: !!process.env.EMAIL_FROM,
-      user: process.env.EMAIL_USER
+      user: process.env.EMAIL_USER,
+      errorType: error.name,
+      errorCode: error.code
     });
+    
+    // Provide helpful error messages
+    if (error.message.includes('timeout')) {
+      console.error('⚠️  Connection timeout - Check network/firewall settings');
+    } else if (error.message.includes('Invalid login')) {
+      console.error('⚠️  Invalid credentials - Check EMAIL_USER and EMAIL_PASS');
+      console.error('⚠️  Make sure you are using Gmail App Password, not regular password');
+    } else if (error.code === 'EAUTH') {
+      console.error('⚠️  Authentication failed - Verify Gmail App Password');
+    }
+    
     return false;
   }
 };
