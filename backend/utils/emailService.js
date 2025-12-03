@@ -20,7 +20,7 @@ const transporter = nodemailer.createTransport({
   }
 });
 
-// Verify transporter configuration
+// Verify transporter configuration (just check if variables exist, don't test connection)
 export const verifyEmailConfig = async () => {
   // Check if email credentials are provided
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
@@ -33,58 +33,32 @@ export const verifyEmailConfig = async () => {
     return false;
   }
 
-  try {
-    // Use Promise.race to add timeout (reduced to 8 seconds for faster startup)
-    const verifyPromise = transporter.verify();
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Email verification timeout after 8 seconds')), 8000)
-    );
-    
-    await Promise.race([verifyPromise, timeoutPromise]);
-    console.log('✅ Email service configured successfully');
-    console.log('📧 Email service ready:', {
-      user: process.env.EMAIL_USER,
-      from: process.env.EMAIL_FROM
-    });
-    return true;
-  } catch (error) {
-    console.error('❌ Email service configuration failed:', error.message);
-    console.error('📧 Email Config Check:', {
-      hasUser: !!process.env.EMAIL_USER,
-      hasPass: !!process.env.EMAIL_PASS,
-      hasFrom: !!process.env.EMAIL_FROM,
-      user: process.env.EMAIL_USER,
-      errorType: error.name,
-      errorCode: error.code
-    });
-    
-    // Provide helpful error messages
-    if (error.message.includes('timeout')) {
-      console.error('⚠️  Connection timeout - Check network/firewall settings');
-    } else if (error.message.includes('Invalid login')) {
-      console.error('⚠️  Invalid credentials - Check EMAIL_USER and EMAIL_PASS');
-      console.error('⚠️  Make sure you are using Gmail App Password, not regular password');
-    } else if (error.code === 'EAUTH') {
-      console.error('⚠️  Authentication failed - Verify Gmail App Password');
-    }
-    
-    return false;
-  }
+  // Just check if variables exist, don't verify connection (will be tested when sending)
+  console.log('✅ Email service configured (credentials present)');
+  console.log('📧 Email service ready:', {
+    user: process.env.EMAIL_USER,
+    from: process.env.EMAIL_FROM
+  });
+  console.log('ℹ️  Email connection will be tested when sending emails');
+  return true;
 };
 
-// Send OTP email
-export const sendOTPEmail = async (email, otp, type = 'verification') => {
-  // Verify email config before sending (if not already verified)
+// Send OTP email with retry logic
+export const sendOTPEmail = async (email, otp, type = 'verification', retries = 2) => {
+  // Verify email config before sending
   if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
     throw new Error('Email service not configured: Missing EMAIL_USER or EMAIL_PASS');
   }
 
-  try {
-    const subject = type === 'password_reset' 
-      ? 'Password Reset Verification Code' 
-      : 'Email Verification Code';
-    
-    const htmlContent = `
+  if (!process.env.EMAIL_FROM) {
+    throw new Error('Email service not configured: Missing EMAIL_FROM');
+  }
+
+  const subject = type === 'password_reset' 
+    ? 'Password Reset Verification Code' 
+    : 'Email Verification Code';
+  
+  const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
           <h1 style="margin: 0; font-size: 28px;">AccuFlow</h1>
@@ -118,28 +92,52 @@ export const sendOTPEmail = async (email, otp, type = 'verification') => {
           </div>
         </div>
       </div>
-    `;
+  `;
 
-    const mailOptions = {
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject: subject,
-      html: htmlContent,
-    };
+  const mailOptions = {
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: subject,
+    html: htmlContent,
+  };
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ OTP email sent to ${email}`);
-    return result;
-  } catch (error) {
-    console.error('❌ Failed to send OTP email:', error.message);
-    throw new Error(`Failed to send email: ${error.message}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await transporter.sendMail(mailOptions);
+      console.log(`✅ OTP email sent to ${email}`);
+      return result;
+    } catch (error) {
+      const isLastAttempt = attempt === retries;
+      
+      if (isLastAttempt) {
+        console.error(`❌ Failed to send OTP email after ${retries + 1} attempts:`, error.message);
+        console.error('📧 Error details:', {
+          code: error.code,
+          command: error.command,
+          response: error.response
+        });
+        throw new Error(`Failed to send email: ${error.message}`);
+      } else {
+        console.warn(`⚠️  Email send attempt ${attempt + 1} failed, retrying... (${error.message})`);
+        // Wait 1 second before retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
   }
 };
 
-// Send welcome email
-export const sendWelcomeEmail = async (email, firstName) => {
-  try {
-    const htmlContent = `
+// Send welcome email with retry logic
+export const sendWelcomeEmail = async (email, firstName, retries = 2) => {
+  // Verify email config before sending
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    throw new Error('Email service not configured: Missing EMAIL_USER or EMAIL_PASS');
+  }
+
+  if (!process.env.EMAIL_FROM) {
+    throw new Error('Email service not configured: Missing EMAIL_FROM');
+  }
+
+  const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
           <h1 style="margin: 0; font-size: 28px;">AccuFlow</h1>
@@ -178,21 +176,37 @@ export const sendWelcomeEmail = async (email, firstName) => {
           </div>
         </div>
       </div>
-    `;
+  `;
 
-    const mailOptions = {
-      from: process.env.EMAIL_FROM,
-      to: email,
-      subject: 'Welcome to AccuFlow!',
-      html: htmlContent,
-    };
+  const mailOptions = {
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: 'Welcome to AccuFlow!',
+    html: htmlContent,
+  };
 
-    const result = await transporter.sendMail(mailOptions);
-    console.log(`✅ Welcome email sent to ${email}`);
-    return result;
-  } catch (error) {
-    console.error('❌ Failed to send welcome email:', error.message);
-    throw new Error(`Failed to send welcome email: ${error.message}`);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const result = await transporter.sendMail(mailOptions);
+      console.log(`✅ Welcome email sent to ${email}`);
+      return result;
+    } catch (error) {
+      const isLastAttempt = attempt === retries;
+      
+      if (isLastAttempt) {
+        console.error(`❌ Failed to send welcome email after ${retries + 1} attempts:`, error.message);
+        console.error('📧 Error details:', {
+          code: error.code,
+          command: error.command,
+          response: error.response
+        });
+        throw new Error(`Failed to send welcome email: ${error.message}`);
+      } else {
+        console.warn(`⚠️  Email send attempt ${attempt + 1} failed, retrying... (${error.message})`);
+        // Wait 1 second before retry
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
   }
 };
 
