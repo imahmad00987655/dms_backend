@@ -3,23 +3,43 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Create transporter
+// Create transporter with timeout settings
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
+  connectionTimeout: 10000, // 10 seconds
+  socketTimeout: 10000, // 10 seconds
+  greetingTimeout: 10000, // 10 seconds
 });
 
 // Verify transporter configuration
 export const verifyEmailConfig = async () => {
+  // Check if email credentials are provided
+  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+    console.error('⚠️  Email service not configured: Missing EMAIL_USER or EMAIL_PASS environment variables');
+    return false;
+  }
+
+  if (!process.env.EMAIL_FROM) {
+    console.error('⚠️  Email service not configured: Missing EMAIL_FROM environment variable');
+    return false;
+  }
+
   try {
     await transporter.verify();
     console.log('✅ Email service configured successfully');
     return true;
   } catch (error) {
     console.error('❌ Email service configuration failed:', error.message);
+    console.error('📧 Email Config Check:', {
+      hasUser: !!process.env.EMAIL_USER,
+      hasPass: !!process.env.EMAIL_PASS,
+      hasFrom: !!process.env.EMAIL_FROM,
+      user: process.env.EMAIL_USER
+    });
     return false;
   }
 };
